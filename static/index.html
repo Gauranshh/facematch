@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b2238"><link rel="manifest" href="/manifest.webmanifest">
 <title>FaceMatch — find people in your photos</title>
 <meta name="description" content="A private, self-hosted face search for your photo library.">
@@ -60,7 +60,7 @@
 <section id="find" class="view on">
   <div class="layout">
     <aside class="panel">
-      <h2>Who are you looking for?</h2>
+      <h2>Who are you looking for? <button class="btn asideT" id="asideT" type="button">Change search</button></h2>
       <div id="peopleChips" class="chips"></div>
       <label class="drop vf" id="drop"><span class="vf-b"></span>
         <input type="file" id="file" accept="image/*,.heic,.heif" multiple hidden>
@@ -108,7 +108,7 @@
         </div>
         <div id="notice" class="notice hid"></div>
         <div id="fbBar" class="notice hid"><span id="fbText"></span> <button class="btn p" id="fbGo">Update results</button> <button class="btn" id="fbClear">Clear</button></div>
-        <div class="mut small tip">Tip: hover a photo and press ✓ “this is them” or ✗ “not them”, then <b>Update results</b> — the search learns from you.</div>
+        <div class="mut small tip">Tip: use ✓ “this is them” or ✗ “not them” on a photo (hover on a computer), then <b>Update results</b> — the search learns from you.</div>
         <div id="grid" class="grid"></div>
         <div id="sentinel" class="mut center">&nbsp;</div>
       </div>

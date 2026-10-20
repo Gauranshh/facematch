@@ -179,6 +179,7 @@ let tok = null, total = 0, items = [], loading = false, selMode = 'none', selSet
 const thr = $('#thr'); thr.oninput = () => $('#thrv').textContent = (+thr.value).toFixed(2); thr.onchange = () => { if (tok) run(); };
 ['#sort', '#srcSel', '#yFrom', '#yTo', '#grp', '#hq', '#vid'].forEach(s => $(s).onchange = () => { if (tok) run(); });
 $('#go').onclick = () => run();
+$('#asideT').onclick = () => { const a = $('aside.panel'); a.classList.toggle('compact'); $('#asideT').textContent = a.classList.contains('compact') ? 'Change search' : 'Hide options'; };
 function buildBody() {
   const q = [...selPeople.keys()].map(id => ({ person: id })); if (refId) q.push({ ref: refId, picks });
   const b = { queries: q, threshold: +thr.value, sort: $('#sort').value, sources: $('#srcSel').value ? [+$('#srcSel').value] : null, hide_low_quality: $('#hq').checked, videos: $('#vidWrap').classList.contains('hid') ? true : $('#vid').checked, pos: [...pos], neg: [...neg] };
@@ -199,6 +200,7 @@ async function run() {
     else if (!d.photos_indexed) { n.classList.remove('hid'); n.textContent = isAdmin() ? 'No photos indexed yet — add a folder in the Library tab.' : 'No photos are available to your account yet.'; }
     else if (!total) { n.classList.remove('hid'); n.textContent = 'Nothing matched. Move “Match strictness” toward “More matches”, relax the filters, or use a clearer front-facing photo.'; }
     updSel(); updFb(); more();
+    if (matchMedia('(max-width:900px)').matches) { $('aside.panel').classList.add('compact'); scrollTo(0, 0); }
   } catch (e) { $('#findMsg').textContent = e.message; }
 }
 async function more() {
@@ -297,6 +299,8 @@ const lbClose = () => { $('#lb').classList.add('hid'); $('#lbMedia').innerHTML =
 $('#lbX').onclick = lbClose; $('#lbL').onclick = () => lbGo(-1); $('#lbR').onclick = () => lbGo(1);
 $('#lbYes').onclick = () => { mark(items[lbIdx], 'y'); openLb(lbIdx); }; $('#lbNo').onclick = () => { mark(items[lbIdx], 'n'); openLb(lbIdx); };
 $('#lb').onclick = e => { if (e.target.id === 'lb') lbClose(); };
+let tx = null; $('#lb').addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+$('#lb').addEventListener('touchend', e => { if (tx == null) return; const d = e.changedTouches[0].clientX - tx; tx = null; if (Math.abs(d) > 60) lbGo(d < 0 ? 1 : -1); }, { passive: true });
 addEventListener('keydown', e => { if ($('#lb').classList.contains('hid')) { if (e.key === 'Escape') closeModal(); return; } if (e.key === 'Escape') lbClose(); if (e.key === 'ArrowLeft') lbGo(-1); if (e.key === 'ArrowRight') lbGo(1); });
 
 // ======================================================================== modal + folder browser

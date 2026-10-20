@@ -23,5 +23,7 @@
   function close() { $('#lb').classList.add('hid'); $('#lbMedia').innerHTML = ''; }
   $('#lbX').onclick = close; $('#lbL').onclick = function () { go(-1); }; $('#lbR').onclick = function () { go(1); };
   $('#lb').onclick = function (e) { if (e.target.id === 'lb') close(); };
+  var tx = null; $('#lb').addEventListener('touchstart', function (e) { tx = e.touches[0].clientX; }, { passive: true });
+  $('#lb').addEventListener('touchend', function (e) { if (tx == null) return; var d = e.changedTouches[0].clientX - tx; tx = null; if (Math.abs(d) > 60) go(d < 0 ? 1 : -1); }, { passive: true });
   addEventListener('keydown', function (e) { if ($('#lb').classList.contains('hid')) return; if (e.key === 'Escape') close(); if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); });
 })();
