@@ -1,0 +1,21 @@
+# docker compose up -d      ->  http://localhost:8765
+# First start: create the admin account in the browser. From another device the page asks for a
+# one-time setup code, printed by:  docker compose logs facematch
+# (or skip that by setting FACEMATCH_ADMIN_USER / FACEMATCH_ADMIN_PASSWORD below.)
+services:
+  facematch:
+    build: .
+    restart: unless-stopped
+    ports: ["8765:8765"]
+    environment:
+      # FACEMATCH_ADMIN_USER: admin
+      # FACEMATCH_ADMIN_PASSWORD: choose-a-long-password
+      # Behind an HTTPS reverse proxy (see Caddyfile.example), also set:
+      # FACEMATCH_TRUST_PROXY: "1"
+      TZ: UTC
+    volumes:
+      - facematch-data:/data                    # index, thumbnails, accounts (survives restarts)
+      - /path/to/your/photos:/photos:ro         # <- EDIT: your photos / external drive (read-only is fine)
+      - /path/to/exports:/exports               # <- EDIT: only needed for "Save to folder"
+volumes:
+  facematch-data:

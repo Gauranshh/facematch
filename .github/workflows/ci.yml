@@ -1,0 +1,36 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}", cache: pip }
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: ruff check .
+      - run: python download_models.py
+      - run: python -m pytest
+
+  docker:
+    name: Docker image builds and starts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t facematch:ci .
+      - name: Start and wait for /healthz
+        run: |
+          docker run -d --name fm -p 8765:8765 facematch:ci
+          for i in $(seq 1 30); do curl -fs http://localhost:8765/healthz && exit 0; sleep 2; done
+          docker logs fm; exit 1
+      - name: Confirm it is not running as root
+        run: test "$(docker exec fm id -u)" != "0"

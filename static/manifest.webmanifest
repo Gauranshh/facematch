@@ -1,0 +1,1 @@
+{"name":"FaceMatch","short_name":"FaceMatch","description":"Private face search for your photo library","start_url":"/","display":"standalone","background_color":"#0b2238","theme_color":"#0b2238","icons":[{"src":"/static/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

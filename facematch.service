@@ -1,0 +1,26 @@
+# Linux: always-on background service.
+#   sudo cp facematch.service /etc/systemd/system/   (edit User= and the paths first)
+#   sudo systemctl enable --now facematch
+# First start: open the site and create the admin account. From another device it asks for a setup code:
+#   journalctl -u facematch | grep "Setup code"
+[Unit]
+Description=FaceMatch photo search
+After=network.target
+
+[Service]
+User=YOUR_USERNAME
+WorkingDirectory=/opt/facematch
+Environment=FACEMATCH_NO_BROWSER=1
+Environment=FACEMATCH_DATA=/var/lib/facematch
+# To reach it from other devices on your network, uncomment (and put HTTPS in front, see Caddyfile.example):
+#Environment=FACEMATCH_HOST=0.0.0.0
+#Environment=FACEMATCH_TRUST_PROXY=1
+ExecStart=/opt/facematch/.venv/bin/python run.py
+Restart=on-failure
+Nice=5
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/facematch
+
+[Install]
+WantedBy=multi-user.target

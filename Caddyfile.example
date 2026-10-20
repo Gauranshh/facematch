@@ -1,0 +1,8 @@
+# HTTPS with automatic certificates. Replace the domain, then:  caddy run --config Caddyfile.example
+# Set FACEMATCH_TRUST_PROXY=1 for FaceMatch so cookies are marked Secure and client IPs are logged correctly.
+photos.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8765 {
+		flush_interval -1
+	}
+}

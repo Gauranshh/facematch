@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store
+# downloaded models (fetched by download_models.py)
+models/*.onnx
+# local data
+*.db
+*.db-wal
+*.db-shm
+.facematch/
+dist/
+build/

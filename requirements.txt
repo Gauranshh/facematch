@@ -1,0 +1,8 @@
+opencv-python-headless>=4.9
+numpy
+flask
+waitress
+pillow
+pillow-heif
+onnxruntime        # only needed for the optional "Accurate" model
+watchdog           # instant detection of new photos

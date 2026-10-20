@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b2238"><link rel="manifest" href="/manifest.webmanifest">
+<title>FaceMatch — find people in your photos</title>
+<meta name="description" content="A private, self-hosted face search for your photo library.">
+<link rel="icon" href="/static/icon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head><body>
+
+<!-- ============ sign in / first-run setup / invite ============ -->
+<div id="auth" class="auth hid">
+  <div class="art vf"><span class="vf-b"></span><div class="grain"></div>
+    <h1>Find anyone in thousands of photos.</h1>
+    <p>Private face search that runs on your own computer. Your pictures never leave it.</p>
+  </div>
+  <div class="form">
+    <form id="authForm" autocomplete="on">
+      <h2 id="aTitle">Sign in</h2>
+      <p class="mut" id="aSub"></p>
+      <label class="f" id="aUserW"><span>Username</span><input type="text" id="aUser" autocomplete="username" autocapitalize="none" required></label>
+      <label class="f hid" id="aDispW"><span>Your name</span><input type="text" id="aDisp" autocomplete="name"></label>
+      <label class="f"><span>Password</span><input type="password" id="aPass" autocomplete="current-password" required></label>
+      <label class="f hid" id="aPass2W"><span>Repeat password</span><input type="password" id="aPass2" autocomplete="new-password"></label>
+      <label class="f hid" id="aCodeW"><span>Setup code</span><input type="text" id="aCode" autocomplete="off"><small class="mut">Printed in the server console when it started.</small></label>
+      <div class="err small" id="aErr" role="alert"></div>
+      <button class="btn p wide" id="aGo" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ the app ============ -->
+<div id="app" class="hid">
+<header class="top">
+  <a class="logo" href="#find" id="logoLink"><svg width="28" height="28" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M3 11V5a2 2 0 0 1 2-2h6M21 3h6a2 2 0 0 1 2 2v6M29 21v6a2 2 0 0 1-2 2h-6M11 29H5a2 2 0 0 1-2-2v-6"/><circle cx="16" cy="13.5" r="4"/><path d="M8.5 24c1.2-3.6 4.2-5.2 7.5-5.2s6.3 1.6 7.5 5.2"/></svg>FaceMatch</a>
+  <nav class="main" aria-label="Main">
+    <button data-tab="find" class="on">Find</button>
+    <button data-tab="people">People</button>
+    <button data-tab="library" class="adm hid">Library</button>
+    <button data-tab="admin" class="adm hid">Admin</button>
+  </nav>
+  <div id="pill" class="pill" title="Library status"></div>
+  <button class="avatar" id="avBtn" aria-haspopup="true" aria-label="Account menu"></button>
+  <div class="menu hid" id="menu">
+    <div class="who" id="mWho"></div><div class="mut small" id="mRole"></div>
+    <hr>
+    <div class="small mut">Appearance</div>
+    <div class="seg" id="modeSeg" style="margin-top:6px"><button data-m="light">Light</button><button data-m="dark">Dark</button><button data-m="auto">Auto</button></div>
+    <div class="sw" id="accSw"></div>
+    <hr>
+    <button class="mi" id="mShares">My share links</button>
+    <button class="mi" id="mPass">Change password</button>
+    <button class="mi" id="mOut">Sign out</button>
+  </div>
+</header>
+
+<main>
+<!-- ============ FIND ============ -->
+<section id="find" class="view on">
+  <div class="layout">
+    <aside class="panel">
+      <h2>Who are you looking for?</h2>
+      <div id="peopleChips" class="chips"></div>
+      <label class="drop vf" id="drop"><span class="vf-b"></span>
+        <input type="file" id="file" accept="image/*,.heic,.heif" multiple hidden>
+        <b>Upload a photo of the person</b>
+        <span>Drop it here or click. More photos of the same person improve accuracy.</span>
+      </label>
+      <div id="refBox"></div>
+      <div id="together" class="notice small hid"></div>
+      <div class="sl">
+        <div class="row between"><b>Match strictness</b><span id="thrv" class="mut"></span></div>
+        <input type="range" id="thr" min="0.2" max="0.65" step="0.01" aria-label="Match strictness">
+        <div class="row between mut small"><span>More matches</span><span>Fewer, surer</span></div>
+      </div>
+      <div class="sl"><b>When</b><div class="row"><select id="yFrom" aria-label="From year"></select><span class="mut">to</span><select id="yTo" aria-label="To year"></select></div></div>
+      <div class="sl"><b>Photos with</b>
+        <select id="grp"><option value="">Anyone (all photos)</option><option value="solo">Only them (solo shots)</option><option value="small">Small groups (2–5 faces)</option><option value="big">Big groups (6+ faces)</option></select></div>
+      <label class="chk"><input type="checkbox" id="hq"> Hide blurry / tiny faces</label>
+      <label class="chk hid" id="vidWrap"><input type="checkbox" id="vid" checked> Include videos</label>
+      <div id="srcWrap" class="sl hid"><b>Search in</b><select id="srcSel"></select></div>
+      <button class="btn p wide" id="go" disabled>Find photos</button>
+      <div id="findMsg" class="err small" role="alert"></div>
+    </aside>
+    <div class="results">
+      <div id="empty" class="empty vf"><span class="vf-b"></span>
+        <svg class="big" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="16" cy="12" r="5"/><path d="M6 27c1.5-5.5 5.5-8 10-8s8.5 2.5 10 8"/></svg>
+        <h3>Pick a person or upload a face</h3>
+        <p id="emptyHint">Your photos are analysed once in the background. After that, every search takes a fraction of a second.</p>
+        <div class="row end" style="justify-content:center;margin-top:14px">
+          <button class="btn p hid" id="toLib">Add your photo folders</button>
+          <button class="btn hid" id="toPeople">See people found in your library</button>
+        </div>
+      </div>
+      <div id="rwrap" class="hid">
+        <div class="bar2">
+          <div><b id="rcount"></b> <span class="mut" id="rms"></span></div>
+          <div class="row grow end wrap">
+            <select id="sort" aria-label="Sort"><option value="best">Best match first</option><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="quality">Sharpest faces first</option></select>
+            <button class="btn" id="selAll">Select all</button>
+            <select id="layout" class="xp" title="How exported files are organised"><option value="flat">Flat</option><option value="year">Folders by year</option><option value="structure">Keep original folders</option></select>
+            <button class="btn xp adm" id="saveBtn" disabled>Save to folder…</button>
+            <button class="btn xp" id="zipBtn" disabled>Download .zip</button>
+            <button class="btn xp" id="shareBtn" disabled>Share link…</button>
+            <button class="btn" id="savePerson">Remember this person</button>
+          </div>
+        </div>
+        <div id="notice" class="notice hid"></div>
+        <div id="fbBar" class="notice hid"><span id="fbText"></span> <button class="btn p" id="fbGo">Update results</button> <button class="btn" id="fbClear">Clear</button></div>
+        <div class="mut small tip">Tip: hover a photo and press ✓ “this is them” or ✗ “not them”, then <b>Update results</b> — the search learns from you.</div>
+        <div id="grid" class="grid"></div>
+        <div id="sentinel" class="mut center">&nbsp;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PEOPLE ============ -->
+<section id="people" class="view">
+  <div class="head row between wrap"><div><h1>People</h1><p class="mut">Faces found in your library are grouped automatically. Name someone once, then find their photos in one click. Names are private to your account.</p></div>
+    <div class="row"><button class="btn hid" id="mergeBtn">Merge selected</button><button class="btn p adm hid" id="discBtn">Scan for people</button></div></div>
+  <div id="discMsg" class="mut small" style="margin-bottom:10px"></div>
+  <div class="tabs"><button data-ps="named" class="on">Named <span id="cNamed"></span></button><button data-ps="discovered">Discovered <span id="cDisc"></span></button><button data-ps="hidden">Hidden <span id="cHidden"></span></button></div>
+  <div id="peopleGrid" class="pgrid"></div>
+  <div class="center" style="margin-top:14px"><button class="btn hid" id="pMore">Show more</button></div>
+</section>
+
+<!-- ============ LIBRARY (admin) ============ -->
+<section id="library" class="view">
+  <div class="head row between wrap"><div><h1>Library</h1><p class="mut">Folders, albums and drives to search. Every photo is analysed once; new photos are noticed within seconds.</p></div>
+    <button class="btn p" id="addSrc">+ Add folder</button></div>
+  <div class="panel" id="idxPanel">
+    <div class="row between wrap"><b id="idxTitle">Idle</b><div class="row wrap"><button class="btn" id="bPause">Pause</button><button class="btn" id="bStop">Stop</button><button class="btn" id="bScan">Scan for new photos</button></div></div>
+    <div class="prog"><i id="idxBar"></i></div>
+    <div class="mut small" id="idxText"></div>
+  </div>
+  <div id="srcList"></div>
+  <div class="panel"><h2>Indexing</h2>
+    <div class="grid3">
+      <label class="f"><span>Speed <small class="mut">(CPU workers — fewer keeps the computer snappy)</small></span><input type="range" id="wk" min="1" value="1"> <b id="wkv"></b></label>
+      <label class="f"><span>Face detail</span><select id="detail"><option value="fast">Fast (close-up faces)</option><option value="balanced">Balanced</option><option value="thorough">Thorough (small faces, slower)</option></select></label>
+      <label class="f"><span>Full re-check</span><select id="auto"><option value="0">never (manual)</option><option value="1">every hour</option><option value="6">every 6 hours</option><option value="24">daily</option><option value="168">weekly</option></select></label>
+    </div>
+    <label class="chk"><input type="checkbox" id="optWatch"> Watch folders and add new photos instantly</label>
+    <label class="chk"><input type="checkbox" id="optVideo"> Also index videos (samples a frame every few seconds — slower)</label>
+    <label class="chk"><input type="checkbox" id="optDisc"> Group faces into people automatically after indexing</label>
+    <label class="chk"><input type="checkbox" id="optShare"> Allow share links</label>
+    <label class="chk"><input type="checkbox" id="optBackup"> Back up the index every day (keeps the last 3)</label>
+    <div class="sl"><b>Skip these folders</b> <span class="mut small">one per line: a folder name (e.g. Screenshots) or a full path</span>
+      <textarea id="excl" rows="3" placeholder="Screenshots&#10;WhatsApp Stickers"></textarea>
+      <button class="btn" id="exclSave" style="margin-top:6px">Save</button></div>
+    <div class="row"><button class="btn" id="bBackup">Back up now</button><span class="mut small" id="bkText"></span></div>
+  </div>
+  <div class="panel"><h2>Recognition model</h2>
+    <div class="row wrap"><select id="modelSel"></select><button class="btn" id="modelGo">Switch model</button></div>
+    <div id="modelMsg" class="small mut" style="margin-top:8px"></div>
+    <div class="prog hid" id="modelProg"><i id="modelBar"></i></div>
+    <p class="mut small">“Standard” is fast. “Accurate” (ArcFace) tells similar-looking people apart much better and copes better with children, side views and ageing, but analysing takes 3–5× longer. Switching re-analyses your library in the background; saved people carry over.</p>
+  </div>
+</section>
+
+<!-- ============ ADMIN ============ -->
+<section id="admin" class="view">
+  <div class="head"><h1>Admin</h1><p class="mut">People who can sign in, what they can see, and what has been happening.</p></div>
+  <div class="tabs"><button data-at="ov" class="on">Overview</button><button data-at="users">Users</button><button data-at="log">Activity</button></div>
+  <div id="at-ov"></div><div id="at-users" class="hid"></div><div id="at-log" class="hid"></div>
+</section>
+</main>
+
+<div id="lb" class="lb vf hid"><span class="vf-b"></span>
+  <button class="x" id="lbX" aria-label="Close">✕</button><button class="nv l" id="lbL" aria-label="Previous">‹</button><button class="nv r" id="lbR" aria-label="Next">›</button>
+  <div id="lbMedia"></div>
+  <div class="cap"><div><span id="lbName"></span> <a id="lbOpen" target="_blank" rel="noopener">open original</a></div>
+    <div class="row" style="justify-content:center;margin-top:8px"><button class="lbfb" id="lbYes">✓ This is them</button><button class="lbfb" id="lbNo">✗ Not them</button></div></div>
+</div>
+</div>
+
+<div id="modal" class="modal hid"><div class="mbox" id="mbox" role="dialog" aria-modal="true"></div></div>
+<div id="toast" class="toast hid" role="status"></div>
+<script src="/static/app.js"></script>
+</body></html>
