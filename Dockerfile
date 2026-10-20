@@ -3,7 +3,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 facematch \
-    && mkdir /data && chown facematch /data
+    && mkdir /data /app && chown facematch /data /app
 
 WORKDIR /app
 COPY requirements.txt .
