@@ -126,13 +126,20 @@ def set_user_sources(uid, sources):
     ids = {r[0] for r in c.execute("SELECT id FROM sources")}
     for s in set(int(x) for x in (sources or ()) if int(x) in ids):
         c.execute("INSERT INTO user_sources(user_id,source_id) VALUES(?,?)", (uid, s))
+    own = c.execute("SELECT own_source FROM users WHERE id=?", (uid,)).fetchone()
+    if own and own[0]:                                    # a person's own upload folder is never removed by editing their access
+        c.execute("INSERT OR IGNORE INTO user_sources(user_id,source_id) VALUES(?,?)", (uid, own[0]))
 
 
 def allowed_sources(user):
     """None = every folder; otherwise a (possibly empty) list of source ids."""
-    if user["role"] == "admin" or user["all_sources"]:
+    if user["role"] == "admin":
         return None
-    return [r[0] for r in db.conn().execute("SELECT source_id FROM user_sources WHERE user_id=?", (user["id"],))]
+    c = db.conn()
+    if user["all_sources"]:        # every shared folder, but never another person's private uploads
+        return [r[0] for r in c.execute("SELECT id FROM sources WHERE owner_id IS NULL OR owner_id=?", (user["id"],))]
+    return [r[0] for r in c.execute("SELECT us.source_id FROM user_sources us JOIN sources s ON s.id=us.source_id "
+                                    "WHERE us.user_id=? AND (s.owner_id IS NULL OR s.owner_id=?)", (user["id"], user["id"]))]
 
 
 def issue_invite(uid, kind="invite", days=7) -> str:

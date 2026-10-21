@@ -1,0 +1,30 @@
+# Public platform: FaceMatch + automatic HTTPS (Caddy). Needs a server with a domain name pointing at it.
+#   1. cp .env.example .env   and fill in DOMAIN and the admin login
+#   2. docker compose -f docker-compose.platform.yml up -d
+#   3. open https://YOUR_DOMAIN, sign in as the admin, then Admin -> "Let anyone create an account"
+services:
+  facematch:
+    build: .
+    restart: unless-stopped
+    expose: ["8765"]
+    environment:
+      FACEMATCH_ADMIN_USER: ${ADMIN_USER:?set ADMIN_USER in .env}
+      FACEMATCH_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      FACEMATCH_TRUST_PROXY: "1"
+      FACEMATCH_SIGNUP: "1"            # open sign-up (can also be switched in the Admin page)
+      FACEMATCH_QUOTA_MB: "2048"       # storage per person
+    volumes:
+      - facematch-data:/data           # accounts, uploaded photos, index  <- BACK THIS UP
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    command: caddy reverse-proxy --from {$DOMAIN} --to facematch:8765
+    volumes:
+      - caddy-data:/data
+    depends_on: [facematch]
+volumes:
+  facematch-data:
+  caddy-data:

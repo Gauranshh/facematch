@@ -237,3 +237,10 @@ aside.panel>h2{display:flex;align-items:center;gap:8px}
   .tile:hover img{transform:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* app feel when installed or on a phone */
+html{overscroll-behavior-y:none}
+button,.tile,.chip,nav.main button,.avatar,label.btn{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+nav.main button,.btn,.tabs button,.avatar{user-select:none;-webkit-user-select:none}
+@media (display-mode:standalone){header.top{padding-top:calc(10px + env(safe-area-inset-top))}}
+label.btn{display:inline-flex;align-items:center;cursor:pointer}

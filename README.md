@@ -32,6 +32,7 @@ keeps a compact index on disk, and from then on every search is instant — whet
 | **Filters** | Year, solo shots vs. groups, folder, hide blurry faces, include videos (frame sampling). |
 | **Share & export** | Expiring, revocable share links with a public viewer; streaming `.zip` download; copy to a folder (flat / by year / original structure). |
 | **Two models** | Fast SFace by default; optional ArcFace for harder cases (children, side views, ageing). Switching carries your people over. |
+| **Platform mode** | Optional open sign-up, private per-person uploads with quotas, account deletion, privacy notice. |
 | **Themes** | Six accent palettes × light / dark / auto, remembered per account. Installable as an app (PWA). |
 | **Safe at scale** | Background multi-process indexing, resumable, pausable, never touches your originals. Daily index backups. |
 
@@ -67,6 +68,14 @@ Mount your photos read-only (`/photos`) and add `/photos` as a folder in the Lib
 
 ### Run as a service (Linux)
 See [`facematch.service`](facematch.service). Set `FACEMATCH_ADMIN_USER` / `FACEMATCH_ADMIN_PASSWORD` to skip the setup screen on unattended installs.
+
+## Run it as a public platform
+
+Turn on **Admin → Platform → Let anyone create an account** and people get a *Create an account* link on the sign-in page. Each person
+uploads their own photos (stored privately, with a per-person storage limit) and searches only those. They can delete photos or their whole account at any time.
+See **[DEPLOY.md](DEPLOY.md)** for putting it on a server with HTTPS (`docker-compose.platform.yml` is a one-command setup).
+
+On a phone, open the site and choose **Install** / **Add to Home Screen** — it runs full-screen like an app.
 
 ## Letting other people in
 
@@ -121,7 +130,7 @@ Command line (headless servers): `python cli.py add ~/Pictures`, `python cli.py 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
 python download_models.py
-ruff check . && python -m pytest        # 23 tests: auth, folder isolation, shares, live detection, clustering
+ruff check . && python -m pytest        # 31 tests: auth, folder isolation, sign-up and uploads, shares, live detection, clustering
 ```
 
 CI runs the suite on Linux, Windows and macOS and builds the Docker image. See [CONTRIBUTING.md](CONTRIBUTING.md).

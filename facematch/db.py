@@ -55,6 +55,7 @@ MIGRATE = [
     ("faces", "q", "REAL"), ("faces", "t", "REAL"),
     ("people", "auto", "INTEGER DEFAULT 0"), ("people", "n", "INTEGER DEFAULT 0"), ("people", "nphotos", "INTEGER DEFAULT 0"),
     ("people", "hidden", "INTEGER DEFAULT 0"), ("people", "rep_path", "TEXT"), ("people", "rep_box", "TEXT"), ("people", "rep_t", "REAL"),
+    ("sources", "owner_id", "INTEGER"), ("users", "own_source", "INTEGER"), ("users", "consent", "REAL"),
     ("people", "owner_id", "INTEGER"), ("people", "from_id", "INTEGER"), ("people", "srcs", "TEXT"),
 ]
 

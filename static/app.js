@@ -23,17 +23,20 @@ const isAdmin = () => ME && ME.role === 'admin';
 let authMode = 'login', inviteTok = null, authInfo = {};
 function showAuth(mode, msg) {
   authMode = mode; clearTimeout(pollTimer); $('#app').classList.add('hid'); $('#auth').classList.remove('hid');
-  const setup = mode === 'setup', inv = mode === 'invite';
-  $('#aTitle').textContent = setup ? 'Create the admin account' : inv ? 'Set your password' : 'Sign in';
-  $('#aSub').textContent = setup ? 'Welcome! This first account manages the library and invites everyone else.' : inv ? `Welcome${authInfo.display ? ', ' + authInfo.display : ''}. Choose a password to finish setting up “${authInfo.username || ''}”.` : 'Welcome back.';
-  $('#aUserW').classList.toggle('hid', inv); $('#aUser').required = !inv; $('#aPass2').required = !login(); $('#aDispW').classList.toggle('hid', !setup);
+  const setup = mode === 'setup', inv = mode === 'invite', su = mode === 'signup';
+  $('#aTitle').textContent = setup ? 'Create the admin account' : su ? 'Create your account' : inv ? 'Set your password' : 'Sign in';
+  $('#aSub').textContent = setup ? 'Welcome! This first account manages the library and invites everyone else.' : su ? 'Upload your photos and find the people in them. Your photos stay private to you.' : inv ? `Welcome${authInfo.display ? ', ' + authInfo.display : ''}. Choose a password to finish setting up “${authInfo.username || ''}”.` : 'Welcome back.';
+  $('#aUserW').classList.toggle('hid', inv); $('#aUser').required = !inv; $('#aPass2').required = !login();
+  $('#aConsentW').classList.toggle('hid', !su); $('#aSwitchW').classList.toggle('hid', !(login() || su) || (login() && !authInfo.signup));
+  $('#aSwitchT').textContent = su ? 'Already have an account?' : 'New here?'; $('#aSwitch').textContent = su ? 'Sign in' : 'Create an account'; $('#aDispW').classList.toggle('hid', !(setup || su));
   $('#aPass2W').classList.toggle('hid', login()); $('#aCodeW').classList.toggle('hid', !(setup && authInfo.code));
   $('#aPass').autocomplete = login() ? 'current-password' : 'new-password';
-  $('#aGo').textContent = setup ? 'Create account' : inv ? 'Save password and continue' : 'Sign in';
+  $('#aGo').textContent = setup || su ? 'Create account' : inv ? 'Save password and continue' : 'Sign in';
   $('#aErr').textContent = msg || ''; $('#aPass').value = ''; $('#aPass2').value = '';
   setTimeout(() => (inv ? $('#aPass') : $('#aUser')).focus(), 50);
 }
 const login = () => authMode === 'login';
+$('#aSwitch').onclick = e => { e.preventDefault(); showAuth(authMode === 'signup' ? 'login' : 'signup'); };
 $('#authForm').onsubmit = async e => {
   e.preventDefault(); const err = $('#aErr'); err.textContent = ''; const pw = $('#aPass').value;
   if (!login() && pw.length < 8) return void (err.textContent = 'Use at least 8 characters for the password.');
@@ -41,6 +44,7 @@ $('#authForm').onsubmit = async e => {
   $('#aGo').disabled = true;
   try {
     if (authMode === 'login') await api('/api/auth/login', { json: { username: $('#aUser').value, password: pw } });
+    else if (authMode === 'signup') await api('/api/auth/signup', { json: { username: $('#aUser').value, display: $('#aDisp').value, password: pw, consent: $('#aConsent').checked } });
     else if (authMode === 'setup') await api('/api/auth/setup', { json: { username: $('#aUser').value, display: $('#aDisp').value, password: pw, code: $('#aCode').value } });
     else await api('/api/auth/invite/' + inviteTok, { json: { password: pw } });
     if (inviteTok) { inviteTok = null; history.replaceState(null, '', '#find'); }
@@ -56,7 +60,7 @@ async function boot() {
     return;
   }
   const s = await api('/api/auth/state');
-  if (!s.user) { authInfo = { code: s.setup_code_required }; return showAuth(s.setup_needed ? 'setup' : 'login'); }
+  if (!s.user) { authInfo = { code: s.setup_code_required, signup: s.signup_open }; return showAuth(s.setup_needed ? 'setup' : (location.hash === '#signup' && s.signup_open) ? 'signup' : 'login'); }
   ME = s.user; startApp();
 }
 
@@ -67,21 +71,22 @@ function startApp() {
   $('#avBtn').textContent = (ME.display || ME.username || '?').trim().slice(0, 1).toUpperCase();
   $('#mWho').textContent = ME.display || ME.username; $('#mRole').textContent = (isAdmin() ? 'Administrator' : 'Member') + ' · ' + ME.username;
   $$('.adm').forEach(e => e.classList.toggle('hid', !isAdmin()));
+  $$('.mem').forEach(e => e.classList.toggle('hid', isAdmin() || !ME.uploads));
   $$('.xp').forEach(e => { if (!ME.can_export) e.classList.add('hid'); });
   if (!ME.can_export) $('#savePerson').classList.remove('hid');
   renderThemeMenu(); settingsInit = false; thrInit = null; ['#yFrom'].forEach(s => delete $(s).dataset.k);
-  const h = location.hash.slice(1); tab(['find', 'people', 'library', 'admin'].includes(h) && (isAdmin() || (h !== 'library' && h !== 'admin')) ? h : 'find');
+  const h = location.hash.slice(1); tab(['find', 'people', 'photos', 'library', 'admin'].includes(h) && (isAdmin() ? h !== 'photos' : (h !== 'library' && h !== 'admin' && (h !== 'photos' || ME.uploads))) ? h : 'find');
   poll(); renderChips();
 }
 function tab(n) {
   $$('nav.main button').forEach(b => b.classList.toggle('on', b.dataset.tab === n));
   $$('.view').forEach(v => v.classList.toggle('on', v.id === n));
-  if (n === 'people') loadPeople(true); if (n === 'library') renderLibrary(true); if (n === 'admin') adminTab(curAdmin);
+  if (n === 'people') loadPeople(true); if (n === 'photos') loadMine(true); if (n === 'library') renderLibrary(true); if (n === 'admin') adminTab(curAdmin);
   history.replaceState(null, '', '#' + n); scrollTo(0, 0);
 }
 $$('nav.main button').forEach(b => b.onclick = () => tab(b.dataset.tab));
 $('#logoLink').onclick = e => { e.preventDefault(); tab('find'); };
-$('#toLib').onclick = () => tab('library'); $('#toPeople').onclick = () => tab('people');
+$('#toLib').onclick = () => tab('library'); $('#toPhotos').onclick = () => tab('photos'); $('#toPeople').onclick = () => tab('people');
 
 const ACC_NAMES = { cyanotype: 'Cyanotype', fern: 'Fern', plum: 'Plum', marigold: 'Marigold', rose: 'Rose', graphite: 'Graphite' };
 const ACC_SW = { cyanotype: '#1b5fa6', fern: '#25724f', plum: '#7d3a93', marigold: '#c58a10', rose: '#b02a52', graphite: '#38424d' };
@@ -117,9 +122,10 @@ async function poll() {
     if ($('#people').classList.contains('on')) renderDisc();
     const L = ST.library;
     $('#toLib').classList.toggle('hid', !(isAdmin() && !L.sources.length));
-    $('#emptyHint').textContent = !L.sources.length ? (isAdmin() ? 'First add the folders, albums or drives that hold your photos. They are analysed once, in the background.' : 'No photo folders are shared with your account yet — ask your admin.') : 'Your photos are analysed once in the background. After that, every search takes a fraction of a second.';
+    const noPhotos = !isAdmin() && ME.uploads && !L.photos; $('#toPhotos').classList.toggle('hid', !noPhotos);
+    $('#emptyHint').textContent = !L.sources.length ? (isAdmin() ? 'First add the folders, albums or drives that hold your photos. They are analysed once, in the background.' : ME.uploads ? 'Upload some photos first — then pick a person or upload a face to find them.' : 'No photo folders are shared with your account yet — ask your admin.') : 'Your photos are analysed once in the background. After that, every search takes a fraction of a second.';
     const mdl = ST.settings.model; if (thrInit !== mdl) { thrInit = mdl; $('#thr').value = ST.default_threshold; $('#thrv').textContent = (+$('#thr').value).toFixed(2); }
-    const sel = $('#srcSel'), want = L.sources.map(s => s.id + ':' + (s.path || s.label)).join('|');
+    const sel = $('#srcSel'); L.sources = L.sources.filter(s => !s.owner_id || !isAdmin()); const want = L.sources.map(s => s.id + ':' + (s.path || s.label)).join('|');
     if (sel.dataset.k !== want) { sel.dataset.k = want; const cur = sel.value; sel.innerHTML = '<option value="">All folders</option>' + L.sources.map(s => `<option value="${s.id}">${esc(s.label || s.path)}</option>`).join(''); sel.value = cur; $('#srcWrap').classList.toggle('hid', L.sources.length < 2); }
     $('#vidWrap').classList.toggle('hid', !L.videos);
     fillYears(L);
@@ -373,8 +379,10 @@ function renderLibrary(force) {
   $('#bPause').textContent = i.paused ? 'Resume' : 'Pause'; $('#bPause').disabled = $('#bStop').disabled = !run; $('#bScan').disabled = run;
   const l = $('#srcList'), key = JSON.stringify(ST.library.sources) + run; if (force || l.dataset.k !== key) {
     l.dataset.k = key; l.innerHTML = '';
-    if (!ST.library.sources.length) l.innerHTML = '<div class="panel mut">No folders yet. Click “+ Add folder” and pick your photo folder, album or external drive.</div>';
-    ST.library.sources.forEach(s => {
+    const priv = ST.library.sources.filter(s => s.owner_id), shared = ST.library.sources.filter(s => !s.owner_id);
+    if (priv.length) l.innerHTML = `<div class="panel mut small">${fmt(priv.length)} personal upload folder${priv.length == 1 ? '' : 's'} from people with accounts · ${fmt(priv.reduce((a, s) => a + s.photos, 0))} photos (managed in Admin → Users).</div>`;
+    if (!shared.length) l.innerHTML += '<div class="panel mut">No folders yet. Click “+ Add folder” and pick your photo folder, album or external drive.</div>';
+    shared.forEach(s => {
       const w = WATCH_TXT[s.watch] || WATCH_TXT.off, d = document.createElement('div'); d.className = 'panel src';
       d.innerHTML = `<div><div class="path">${esc(s.path)} <span class="badge ${s.online ? '' : 'off'}">${s.online ? 'connected' : 'not connected'}</span> <span class="badge ${w[1]}">${w[0]}</span></div><div class="mut small">${fmt(s.photos)} files · ${fmt(s.faces)} faces · last scan ${ago(s.last_scan)}${s.online ? '' : ' · still searchable, originals unavailable until reconnected'}</div></div><div class="row"><button class="btn" data-a="scan">Rescan</button><button class="btn danger" data-a="rm">Remove</button></div>`;
       d.querySelector('[data-a=scan]').disabled = run || !s.online; d.querySelector('[data-a=scan]').onclick = async () => { await api('/api/index/start', { json: { source_ids: [s.id] } }); poll(); };
@@ -417,7 +425,13 @@ function adminTab(t) {
 async function adminOverview() {
   const d = await api('/api/admin/overview'), box = $('#at-ov'), up = d.uptime > 86400 ? Math.floor(d.uptime / 86400) + ' d' : dur(d.uptime);
   const total = d.db_bytes + d.thumb_bytes, used = d.disk_total - d.disk_free;
-  box.innerHTML = `<div class="stats">
+  const S = (ST && ST.settings) || {};
+  box.innerHTML = `<div class="panel"><h2>Platform</h2>
+    <label class="chk"><input type="checkbox" id="optSignup" ${S.signup ? 'checked' : ''}> <span><b>Let anyone create an account</b> <span class="mut small">— adds a “Create an account” link on the sign-in page. Turn this on when the site is public.</span></span></label>
+    <label class="chk"><input type="checkbox" id="optUploads" ${S.uploads !== false ? 'checked' : ''}> <span><b>Let people upload their own photos</b> <span class="mut small">— stored privately per person.</span></span></label>
+    <label class="f" style="max-width:260px"><span>Storage per person (MB)</span><input type="number" id="optQuota" min="10" value="${S.quota_mb || 2048}"></label>
+    <div class="small mut">Share this address with people: <b>${esc(location.origin)}</b></div></div>
+  <div class="stats">
     <div class="stat"><b>${fmt(d.photos)}</b><span>files indexed (${fmt(d.with_faces)} with faces)</span></div>
     <div class="stat"><b>${fmt(d.faces)}</b><span>faces</span></div>
     <div class="stat"><b>${fmt(d.users)}</b><span>accounts</span></div>
@@ -430,6 +444,9 @@ async function adminOverview() {
     <div><span class="mut">Model</span><br>${esc(d.model === 'arcface' ? 'Accurate (ArcFace)' : 'Standard (SFace)')}</div>
     <div><span class="mut">Disk</span><br>${bytes(d.disk_free)} free of ${bytes(d.disk_total)} (${Math.round(100 * used / d.disk_total)}% used)</div>
     <div><span class="mut">Last backup</span><br>${d.last_backup ? ago(d.last_backup) : 'none yet'}</div></div></div>`;
+  $('#optSignup').onchange = e => setSetting({ signup: e.target.checked }, e.target.checked ? 'Public sign-up is ON' : 'Public sign-up is OFF');
+  $('#optUploads').onchange = e => setSetting({ uploads: e.target.checked });
+  $('#optQuota').onchange = e => setSetting({ quota_mb: +e.target.value }, 'Storage limit saved');
   drawChart(d.by_year); $('#chT').onclick = e => { const c = $('#chart'); c.dataset.tbl = c.dataset.tbl ? '' : '1'; e.target.textContent = c.dataset.tbl ? 'View as chart' : 'View as table'; drawChart(d.by_year); };
 }
 function drawChart(by) {
@@ -456,7 +473,7 @@ async function adminUsers() {
 }
 function linkBox(path, note) { const url = location.origin + (path.startsWith('/') ? path : '/' + path); return `<div class="notice"><div class="small">${note}</div><div class="linkbox" style="margin-top:6px"><input type="text" readonly value="${esc(url)}" id="invU"><button class="btn" id="invC">Copy</button></div></div>`; }
 function userForm(u) {
-  const srcs = ST ? ST.library.sources : [];
+  const srcs = ST ? ST.library.sources.filter(s => !s.owner_id) : [];
   modal(`<h2>${u ? 'Edit ' + esc(u.username) : 'Add a user'}</h2>
   ${u ? '' : '<label class="f"><span>Username</span><input type="text" id="fU" autocapitalize="none"></label>'}
   <label class="f"><span>Display name</span><input type="text" id="fD" value="${u ? esc(u.display) : ''}"></label>
@@ -491,6 +508,61 @@ async function adminLog() {
   const d = await api('/api/admin/audit?limit=100'), box = $('#at-log');
   box.innerHTML = '<div class="panel" style="padding:6px 14px">' + (d.events.length ? d.events.map(e => `<div class="ev"><span class="mut">${dtstr(e.ts)}</span><b>${esc(e.username || '—')}</b><span>${esc(EV[e.event] || e.event)}</span><span class="mut">${esc(e.detail || '')}${e.ip ? ' · ' + esc(e.ip) : ''}</span></div>`).join('') : '<p class="mut">Nothing yet.</p>') + '</div>';
 }
+
+// ======================================================================== my photos (members)
+let myOff = 0, mySel = new Set(), myTotal = 0;
+const upInput = $('#upFile'), upDrop = $('#upDrop');
+upInput.onchange = e => { if (e.target.files.length) uploadFiles([...e.target.files]); e.target.value = ''; };
+['dragover', 'dragleave', 'drop'].forEach(ev => upDrop.addEventListener(ev, e => { e.preventDefault(); upDrop.classList.toggle('on', ev === 'dragover'); if (ev === 'drop' && e.dataTransfer.files.length) uploadFiles([...e.dataTransfer.files]); }));
+async function uploadFiles(files) {
+  const msg = $('#upMsg'); let done = 0, bad = [], BATCH = 6; $('#upBtn').classList.add('hid');
+  for (let i = 0; i < files.length; i += BATCH) {
+    const fd = new FormData(); files.slice(i, i + BATCH).forEach(f => fd.append('photos', f));
+    msg.textContent = `Uploading ${Math.min(i + BATCH, files.length)} of ${files.length}…`;
+    try { const r = await api('/api/upload', { method: 'POST', body: fd }); done += r.saved; bad = bad.concat(r.rejected); } catch (e) { bad.push({ name: '(batch)', why: e.message }); break; }
+  }
+  $('#upBtn').classList.remove('hid');
+  msg.textContent = `${done} photo${done == 1 ? '' : 's'} uploaded` + (bad.length ? ` · ${bad.length} skipped (${[...new Set(bad.map(b => b.why))].join(', ')})` : '') + (done ? ' — analysing them now…' : '');
+  loadMine(true); poll();
+}
+async function loadMine(reset) {
+  if (!ME || isAdmin()) return;
+  if (reset) { myOff = 0; mySel.clear(); $('#myGrid').innerHTML = ''; updMy(); }
+  const d = await api(`/api/my/photos?offset=${myOff}&limit=60`), g = $('#myGrid'); myTotal = d.total;
+  const pct = d.quota ? Math.min(100, 100 * d.used / d.quota) : 0;
+  $('#upTitle').textContent = `${fmt(d.total)} photo${d.total == 1 ? '' : 's'}` + (d.pending ? ` · ${fmt(d.pending)} being analysed` : '');
+  $('#upQuota').textContent = d.quota ? `${bytes(d.used)} of ${bytes(d.quota)} used` : `${bytes(d.used)} used`; $('#upBar').style.width = pct + '%';
+  if (!d.uploads) { $('#upBtn').classList.add('hid'); upDrop.classList.add('hid'); }
+  d.items.forEach(it => {
+    const t = document.createElement('div'); t.className = 'tile vf'; t.dataset.id = it.id;
+    t.innerHTML = `<span class="vf-b"></span><img loading="lazy" alt="" src="${it.faces ? '/thumb/' : '/photo/'}${it.id}"><span class="ck" role="checkbox" aria-label="Select">✓</span>${it.faces ? '' : '<span class="sc" style="display:block">no face found</span>'}`;
+    t.title = it.name; t.onclick = () => { mySel.has(it.id) ? mySel.delete(it.id) : mySel.add(it.id); t.classList.toggle('sel', mySel.has(it.id)); updMy(); }; g.appendChild(t);
+  });
+  myOff += d.items.length; $('#myMore').classList.toggle('hid', myOff >= d.total);
+  if (reset && !d.items.length) g.innerHTML = '<p class="mut">No photos yet. Press “Add photos” to choose pictures from your phone or computer.</p>';
+  if (d.pending) setTimeout(() => { if ($('#photos').classList.contains('on')) loadMine(true); }, 4000);
+}
+function updMy() { $('#myDel').classList.toggle('hid', !mySel.size); $('#myDel').textContent = `Delete ${mySel.size} selected`; }
+$('#myMore').onclick = () => loadMine(false);
+$('#myDel').onclick = async () => { if (!confirm(`Permanently delete ${mySel.size} photo${mySel.size == 1 ? '' : 's'}? This can’t be undone.`)) return; try { const r = await api('/api/my/photos/delete', { json: { ids: [...mySel] } }); toast(`${r.deleted} deleted`); loadMine(true); poll(); } catch (e) { toast(e.message); } };
+
+// ======================================================================== install as an app, delete account
+let installEvt = null;
+const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent), STANDALONE = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#mInstall').classList.remove('hid'); });
+addEventListener('appinstalled', () => { installEvt = null; $('#mInstall').classList.add('hid'); toast('Installed'); });
+if (IOS && !STANDALONE) $('#mInstall').classList.remove('hid');
+$('#mInstall').onclick = async () => {
+  $('#menu').classList.add('hid');
+  if (installEvt) { installEvt.prompt(); await installEvt.userChoice; installEvt = null; return; }
+  modal('<h2>Install FaceMatch</h2><p>On iPhone or iPad: tap the <b>Share</b> button in Safari, then <b>Add to Home Screen</b>.</p><p class="mut small">On Android and desktop Chrome/Edge, an “Install” option appears in the browser menu.</p><div class="row end"><button class="btn p" id="c">Got it</button></div>', m => { m.querySelector('#c').onclick = closeModal; });
+};
+$('#mDelete').onclick = () => { $('#menu').classList.add('hid'); modal(`<h2>Delete my account</h2><p>This permanently deletes your account, your uploaded photos, the people you saved and your share links. It can’t be undone.</p>
+  <label class="f"><span>Type your password to confirm</span><input type="password" id="dpw" autocomplete="current-password"></label><div class="err small" id="dE"></div>
+  <div class="row end"><button class="btn" id="c">Cancel</button><button class="btn danger" id="ok">Delete everything</button></div>`, m => {
+  m.querySelector('#c').onclick = closeModal;
+  m.querySelector('#ok').onclick = async () => { try { await api('/api/me/delete', { json: { password: m.querySelector('#dpw').value } }); ME = null; location.hash = ''; location.reload(); } catch (e) { m.querySelector('#dE').textContent = e.message; } };
+}); };
 
 // ======================================================================== start
 addEventListener('hashchange', () => { if (location.hash.startsWith('#invite/')) boot(); });

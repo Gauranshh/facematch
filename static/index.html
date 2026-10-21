@@ -2,6 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b2238"><link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FaceMatch"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <title>FaceMatch — find people in your photos</title>
 <meta name="description" content="A private, self-hosted face search for your photo library.">
 <link rel="icon" href="/static/icon.svg">
@@ -13,7 +16,7 @@
 <div id="auth" class="auth hid">
   <div class="art vf"><span class="vf-b"></span><div class="grain"></div>
     <h1>Find anyone in thousands of photos.</h1>
-    <p>Private face search that runs on your own computer. Your pictures never leave it.</p>
+    <p>Private face search for your photo library. Your pictures stay yours.</p>
   </div>
   <div class="form">
     <form id="authForm" autocomplete="on">
@@ -24,8 +27,10 @@
       <label class="f"><span>Password</span><input type="password" id="aPass" autocomplete="current-password" required></label>
       <label class="f hid" id="aPass2W"><span>Repeat password</span><input type="password" id="aPass2" autocomplete="new-password"></label>
       <label class="f hid" id="aCodeW"><span>Setup code</span><input type="text" id="aCode" autocomplete="off"><small class="mut">Printed in the server console when it started.</small></label>
+      <label class="chk hid" id="aConsentW" style="align-items:flex-start"><input type="checkbox" id="aConsent" style="margin-top:4px"><span class="small">I agree to the <a href="/privacy" target="_blank" rel="noopener">privacy notice</a>, and I have the right to upload these photos. I understand faces in them are analysed to make search possible.</span></label>
       <div class="err small" id="aErr" role="alert"></div>
       <button class="btn p wide" id="aGo" type="submit">Sign in</button>
+      <p class="center small hid" id="aSwitchW" style="margin-top:14px"><span id="aSwitchT" class="mut"></span> <a href="#" id="aSwitch"></a></p>
     </form>
   </div>
 </div>
@@ -37,6 +42,7 @@
   <nav class="main" aria-label="Main">
     <button data-tab="find" class="on">Find</button>
     <button data-tab="people">People</button>
+    <button data-tab="photos" class="mem hid">Photos</button>
     <button data-tab="library" class="adm hid">Library</button>
     <button data-tab="admin" class="adm hid">Admin</button>
   </nav>
@@ -50,7 +56,10 @@
     <div class="sw" id="accSw"></div>
     <hr>
     <button class="mi" id="mShares">My share links</button>
+    <button class="mi hid" id="mInstall">Install as an app</button>
     <button class="mi" id="mPass">Change password</button>
+    <a class="mi" href="/privacy" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">Privacy notice</a>
+    <button class="mi" id="mDelete" style="color:var(--bad)">Delete my account…</button>
     <button class="mi" id="mOut">Sign out</button>
   </div>
 </header>
@@ -90,6 +99,7 @@
         <p id="emptyHint">Your photos are analysed once in the background. After that, every search takes a fraction of a second.</p>
         <div class="row end" style="justify-content:center;margin-top:14px">
           <button class="btn p hid" id="toLib">Add your photo folders</button>
+          <button class="btn p hid" id="toPhotos">Upload your photos</button>
           <button class="btn hid" id="toPeople">See people found in your library</button>
         </div>
       </div>
@@ -124,6 +134,17 @@
   <div class="tabs"><button data-ps="named" class="on">Named <span id="cNamed"></span></button><button data-ps="discovered">Discovered <span id="cDisc"></span></button><button data-ps="hidden">Hidden <span id="cHidden"></span></button></div>
   <div id="peopleGrid" class="pgrid"></div>
   <div class="center" style="margin-top:14px"><button class="btn hid" id="pMore">Show more</button></div>
+</section>
+
+<!-- ============ MY PHOTOS (members) ============ -->
+<section id="photos" class="view">
+  <div class="head row between wrap"><div><h1>My photos</h1><p class="mut">Add photos here, then find people in them from the Find tab. Only you (and the site admin) can see this folder.</p></div>
+    <div class="row"><button class="btn danger hid" id="myDel">Delete selected</button><label class="btn p" for="upFile" id="upBtn">+ Add photos</label></div>
+    <input type="file" id="upFile" accept="image/*,.heic,.heif" multiple hidden></div>
+  <div class="panel"><div class="row between wrap"><b id="upTitle">Storage</b><span class="mut small" id="upQuota"></span></div><div class="prog"><i id="upBar"></i></div><div class="small mut" id="upMsg"></div></div>
+  <label class="drop vf" id="upDrop" style="margin-bottom:14px"><span class="vf-b"></span><b>Drop photos here</b><span>or press “Add photos”. JPG, PNG, WebP, HEIC · up to 40 MB each</span></label>
+  <div id="myGrid" class="grid selecting"></div>
+  <div class="center" style="margin-top:14px"><button class="btn hid" id="myMore">Show more</button></div>
 </section>
 
 <!-- ============ LIBRARY (admin) ============ -->

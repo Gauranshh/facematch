@@ -73,7 +73,7 @@ def _lru(d, key, val, cap):
 
 # ------------------------------------------------------------------ security plumbing
 PUBLIC_PREFIXES = ("/static/", "/s/", "/api/auth/", "/api/public/")
-PUBLIC_EXACT = {"/", "/healthz", "/manifest.webmanifest", "/sw.js", "/favicon.ico"}
+PUBLIC_EXACT = {"/", "/healthz", "/manifest.webmanifest", "/sw.js", "/favicon.ico", "/privacy", "/offline"}
 
 
 def me():
@@ -150,6 +150,16 @@ def home():
     return send_from_directory(STATIC, "index.html")
 
 
+@app.get("/privacy")
+def privacy_page():
+    return send_from_directory(STATIC, "privacy.html")
+
+
+@app.get("/offline")
+def offline_page():
+    return send_from_directory(STATIC, "offline.html")
+
+
 @app.get("/static/<path:p>")
 def static_files(p):
     return send_from_directory(STATIC, p, max_age=300)
@@ -182,7 +192,7 @@ def _is_local_request():
 
 
 def _public_user(u):
-    return dict(id=u["id"], username=u["username"], display=u["display"], role=u["role"], can_export=bool(u["can_export"] or u["role"] == "admin"),
+    return dict(uploads=_uploads_on(), id=u["id"], username=u["username"], display=u["display"], role=u["role"], can_export=bool(u["can_export"] or u["role"] == "admin"),
                 theme=json.loads(u["theme"]) if u.get("theme") else None)
 
 
@@ -190,7 +200,7 @@ def _public_user(u):
 def auth_state():
     u = me()
     return jsonify(setup_needed=auth.user_count() == 0, user=_public_user(u) if u else None, version=__version__,
-                   setup_code_required=not _is_local_request())
+                   setup_code_required=not _is_local_request(), signup_open=_signup_open() and auth.user_count() > 0)
 
 
 @app.post("/api/auth/setup")
@@ -356,11 +366,7 @@ def admin_user_del(uid):
         return jsonify(error="You can't delete your own account."), 400
     if r["role"] == "admin" and c.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0] <= 1:
         return jsonify(error="There must always be at least one admin."), 400
-    for sql in ("DELETE FROM person_samples WHERE person_id IN (SELECT id FROM people WHERE owner_id=?)", "DELETE FROM people WHERE owner_id=?",
-                "DELETE FROM sessions WHERE user_id=?", "DELETE FROM invites WHERE user_id=?", "DELETE FROM shares WHERE user_id=?",
-                "DELETE FROM user_sources WHERE user_id=?", "DELETE FROM users WHERE id=?"):
-        c.execute(sql, (uid,))
-    c.commit()
+    _purge_user(uid)
     auth.audit("user_deleted", r["username"], me())
     return jsonify(ok=True)
 
@@ -410,7 +416,7 @@ def _stats():
     for r in c.execute("SELECT * FROM sources ORDER BY id"):
         n, f, e, v = per.get(r["id"], (0, 0, 0, 0))
         srcs.append(dict(id=r["id"], path=r["path"], photos=n, faces=f, problems=e or 0, videos=v or 0, last_scan=r["last_scan"],
-                         online=os.path.isdir(r["path"]), watch=watcher.mode(r["id"])))
+                         online=os.path.isdir(r["path"]), watch=watcher.mode(r["id"]), owner_id=r["owner_id"]))
     yr = c.execute("SELECT MIN(COALESCE(taken,mtime)), MAX(COALESCE(taken,mtime)) FROM photos WHERE COALESCE(taken,mtime)>631152000").fetchone()
     y = lambda t: time.localtime(t).tm_year if t else None  # noqa: E731
     v = dict(sources=srcs, photos=sum(s["photos"] for s in srcs), faces=sum(s["faces"] for s in srcs),
@@ -424,7 +430,8 @@ def _settings():
     return dict(workers=int(g_("workers", max(1, (os.cpu_count() or 2) - 1))), detail=g_("detail", "balanced"),
                 autoscan_hours=float(g_("autoscan_hours", 24)), videos=g_("videos", "0") == "1", exclude=g_("exclude", ""),
                 auto_discover=g_("auto_discover", "1") == "1", backup=g_("backup", "1") == "1", watch=g_("watch", "1") == "1",
-                sharing=g_("sharing", "1") == "1", last_backup=float(g_("last_backup", 0) or 0), model=cur_model())
+                sharing=g_("sharing", "1") == "1", signup=_signup_open(), uploads=_uploads_on(), quota_mb=int(_quota_bytes() / 1048576),
+                last_backup=float(g_("last_backup", 0) or 0), model=cur_model())
 
 
 @app.get("/api/status")
@@ -436,12 +443,12 @@ def status():
         lib = dict(L, sources=srcs)
         idx = indexer.status()
     else:
-        lib = dict(sources=[dict(id=s["id"], label=os.path.basename(s["path"].rstrip("/\\")) or s["path"], photos=s["photos"], faces=s["faces"], videos=s["videos"]) for s in srcs],
+        lib = dict(sources=[dict(id=s["id"], label="My photos" if s.get("owner_id") else (os.path.basename(s["path"].rstrip("/\\")) or s["path"]), photos=s["photos"], faces=s["faces"], videos=s["videos"]) for s in srcs],
                    photos=sum(s["photos"] for s in srcs), faces=sum(s["faces"] for s in srcs), videos=sum(s["videos"] for s in srcs),
                    year_min=L["year_min"], year_max=L["year_max"])
         i = indexer.status()
         idx = dict(running=i["running"], state=i["state"], done=i["done"], total=i["total"], paused=i["paused"])
-    out = dict(index=idx, library=lib, default_threshold=MODELS[m]["thr"], version=__version__, sharing=db.get_setting("sharing", "1") == "1",
+    out = dict(index=idx, library=lib, default_threshold=MODELS[m]["thr"], version=__version__, sharing=db.get_setting("sharing", "1") == "1", uploads=_uploads_on(),
                models=[dict(id=k, label=v["label"], available=model_available(k)) for k, v in MODELS.items()], discover=DISC, model_job=MODEL_JOB,
                settings=_settings() if admin else dict(model=m), cpus=os.cpu_count())
     return jsonify(out)
@@ -523,7 +530,9 @@ def settings():
         db.set_setting("detail", d["detail"])
     if "autoscan_hours" in d:
         db.set_setting("autoscan_hours", max(0.0, float(d["autoscan_hours"])))
-    for k in ("videos", "auto_discover", "backup", "watch", "sharing"):
+    if "quota_mb" in d:
+        db.set_setting("quota_mb", max(10, min(int(float(d["quota_mb"])), 10_000_000)))
+    for k in ("videos", "auto_discover", "backup", "watch", "sharing", "signup", "uploads"):
         if k in d:
             db.set_setting(k, "1" if d[k] else "0")
     if "watch" in d:
@@ -701,7 +710,8 @@ def _pool_visible(row, a):
     if a is None:
         return True
     try:
-        return any(int(k) in a for k in json.loads(row["srcs"] or "{}"))
+        keys = [int(k) for k in json.loads(row["srcs"] or "{}")]
+        return bool(keys) and all(k in a for k in keys)   # a group that also contains someone else's photos is never shown
     except Exception:
         return False
 
@@ -1391,6 +1401,225 @@ def share_zip(token):
         files += [dict(path=x["path"], taken=x["t"], root=x["root"]) for x in c.execute(
             f"SELECT p.path, COALESCE(p.taken,p.mtime) t, s.path root FROM photos p JOIN sources s ON s.id=p.source_id WHERE p.id IN ({','.join('?' * len(ch))})", ch)]
     return _zip_response(files, "flat", "shared_photos.zip")
+
+
+# ------------------------------------------------------------------ open sign-up, personal uploads, account deletion
+MAX_UPLOAD_FILE = 40 * 1024 * 1024
+_signup_hits = defaultdict(deque)
+
+
+def _signup_open():
+    return db.get_setting("signup", os.environ.get("FACEMATCH_SIGNUP", "0")) == "1"
+
+
+def _uploads_on():
+    return db.get_setting("uploads", "1") == "1"
+
+
+def _quota_bytes():
+    return int(float(db.get_setting("quota_mb", os.environ.get("FACEMATCH_QUOTA_MB", 2048))) * 1048576)
+
+
+def _dir_stats(root):
+    n = size = 0
+    try:
+        for e in os.scandir(root):
+            if e.is_file():
+                n += 1
+                size += e.stat().st_size
+    except OSError:
+        pass
+    return n, size
+
+
+def ensure_private_source(uid):
+    """Every account gets its own private upload folder; only that person (and admins) can see photos in it."""
+    c = db.conn()
+    r = c.execute("SELECT own_source FROM users WHERE id=?", (uid,)).fetchone()
+    if r and r["own_source"]:
+        row = c.execute("SELECT id, path FROM sources WHERE id=?", (r["own_source"],)).fetchone()
+        if row:
+            Path(row["path"]).mkdir(parents=True, exist_ok=True)
+            return row["id"], row["path"]
+    path = str(db.DATA_DIR / "users" / str(uid) / "photos")
+    os.makedirs(path, exist_ok=True)
+    c.execute("INSERT OR IGNORE INTO sources(path, added_at, owner_id) VALUES(?,?,?)", (path, time.time(), uid))
+    sid = c.execute("SELECT id FROM sources WHERE path=?", (path,)).fetchone()[0]
+    c.execute("UPDATE users SET own_source=? WHERE id=?", (sid, uid))
+    c.execute("INSERT OR IGNORE INTO user_sources(user_id, source_id) VALUES(?,?)", (uid, sid))
+    c.commit()
+    _stats_cache["t"] = 0
+    if db.get_setting("watch", "1") == "1":
+        watcher.watch(sid, path)
+    return sid, path
+
+
+@app.post("/api/auth/signup")
+def auth_signup():
+    if not _signup_open() or auth.user_count() == 0:
+        return jsonify(error="Sign-up is closed. Ask the admin for an invite link."), 403
+    d = request.get_json(silent=True) or {}
+    if not d.get("consent"):
+        return jsonify(error="Please tick the box to agree to the privacy notice."), 400
+    ip, now = auth.client_ip(), time.time()
+    q = _signup_hits[ip]
+    while q and now - q[0] > 3600:
+        q.popleft()
+    if len(q) >= 5:
+        return jsonify(error="Too many sign-ups from this network. Try again in an hour."), 429
+    uid = auth.create_user(d.get("username"), d.get("display"), "member", d.get("password"), True, False, ())
+    q.append(now)
+    c = db.conn()
+    c.execute("UPDATE users SET consent=? WHERE id=?", (now, uid))
+    c.commit()
+    ensure_private_source(uid)
+    tok = auth.new_session(uid)
+    g.user = None
+    auth.audit("signup", "self-registered", dict(id=uid, username=auth.clean_username(d.get("username"))))
+    return _set_cookie(jsonify(ok=True), tok)
+
+
+@app.post("/api/upload")
+def upload_photos():
+    if not _uploads_on():
+        return jsonify(error="Uploads are turned off."), 403
+    u = me()
+    files = request.files.getlist("photos")[:40]
+    if not files:
+        return jsonify(error="Choose some photos first."), 400
+    from PIL import Image
+    from werkzeug.utils import secure_filename
+    from .core import IMAGE_EXTS
+    sid, root = ensure_private_source(u["id"])
+    _, used = _dir_stats(root)
+    quota = None if u["role"] == "admin" else _quota_bytes()
+    if shutil.disk_usage(db.DATA_DIR).free < 500 * 1048576:
+        return jsonify(error="The server is almost out of disk space."), 507
+    saved, rejected = [], []
+    for f in files:
+        nm = secure_filename(f.filename or "") or "photo"
+        ext = os.path.splitext(nm)[1].lower()
+        if ext not in IMAGE_EXTS:
+            rejected.append(dict(name=nm, why="not a supported photo type"))
+            continue
+        data = f.read(MAX_UPLOAD_FILE + 1)
+        if len(data) > MAX_UPLOAD_FILE:
+            rejected.append(dict(name=nm, why="larger than 40 MB"))
+            continue
+        if quota is not None and used + len(data) > quota:
+            rejected.append(dict(name=nm, why="your storage is full"))
+            continue
+        try:
+            Image.open(io.BytesIO(data)).verify()
+        except Exception:
+            rejected.append(dict(name=nm, why="not a valid image"))
+            continue
+        dst = Path(root) / f"{uuid.uuid4().hex[:8]}_{nm}"
+        dst.write_bytes(data)
+        used += len(data)
+        saved.append(str(dst))
+    if saved:
+        indexer.add_paths(sid, saved)
+        auth.audit("upload", f"{len(saved)} photos", u)
+    return jsonify(saved=len(saved), rejected=rejected, used=used, quota=quota)
+
+
+def _own_source(u):
+    r = db.conn().execute("SELECT s.id, s.path FROM users x JOIN sources s ON s.id=x.own_source WHERE x.id=?", (u["id"],)).fetchone()
+    return (r["id"], r["path"]) if r else (None, None)
+
+
+@app.get("/api/my/photos")
+def my_photos():
+    u = me()
+    sid, root = _own_source(u)
+    off, lim = max(0, int(request.args.get("offset", 0))), min(200, int(request.args.get("limit", 60)))
+    files, used = _dir_stats(root) if root else (0, 0)
+    items, total = [], 0
+    if sid:
+        c = db.conn()
+        total = c.execute("SELECT COUNT(*) FROM photos WHERE source_id=?", (sid,)).fetchone()[0]
+        for r in c.execute("SELECT id, path, nfaces, status FROM photos WHERE source_id=? ORDER BY id DESC LIMIT ? OFFSET ?", (sid, lim, off)):
+            nm = os.path.basename(r["path"])
+            items.append(dict(id=r["id"], name=nm[9:] if len(nm) > 9 and nm[8] == "_" else nm, faces=r["nfaces"], ok=r["status"] == "ok"))
+    return jsonify(items=items, total=total, pending=max(0, files - total), used=used, quota=None if u["role"] == "admin" else _quota_bytes(), uploads=_uploads_on())
+
+
+def _delete_photos(sid, ids):
+    c = db.conn()
+    n = 0
+    for pid in ids:
+        r = c.execute("SELECT path, tkey FROM photos WHERE id=? AND source_id=?", (pid, sid)).fetchone()
+        if not r:
+            continue
+        c.execute("DELETE FROM faces WHERE photo_id=?", (pid,))
+        c.execute("DELETE FROM photos WHERE id=?", (pid,))
+        for f in (r["path"], str(db.thumb_path(r["tkey"])) if r["tkey"] else None):
+            try:
+                f and os.unlink(f)
+            except OSError:
+                pass
+        n += 1
+    c.commit()
+    index.invalidate()
+    _count_cache.clear()
+    _stats_cache["t"] = 0
+    return n
+
+
+@app.post("/api/my/photos/delete")
+def my_photos_delete():
+    sid, _ = _own_source(me())
+    ids = [int(i) for i in (request.get_json(silent=True) or {}).get("ids", [])][:500]
+    if not sid or not ids:
+        return jsonify(error="Nothing to delete."), 400
+    n = _delete_photos(sid, ids)
+    auth.audit("photos_deleted", f"{n} photos", me())
+    return jsonify(ok=True, deleted=n)
+
+
+def _purge_user(uid):
+    """Remove a person completely: account, private photos and their thumbnails, saved people, share links."""
+    c = db.conn()
+    own = c.execute("SELECT own_source FROM users WHERE id=?", (uid,)).fetchone()
+    sid = own[0] if own else None
+    if sid:
+        watcher.unwatch(sid)
+        tk = [r[0] for r in c.execute("SELECT tkey FROM photos WHERE source_id=? AND tkey IS NOT NULL", (sid,))]
+        c.execute("DELETE FROM faces WHERE photo_id IN (SELECT id FROM photos WHERE source_id=?)", (sid,))
+        c.execute("DELETE FROM photos WHERE source_id=?", (sid,))
+        c.execute("DELETE FROM sources WHERE id=?", (sid,))
+        c.execute("DELETE FROM user_sources WHERE source_id=?", (sid,))
+        for t in tk:
+            try:
+                db.thumb_path(t).unlink()
+            except OSError:
+                pass
+        shutil.rmtree(db.DATA_DIR / "users" / str(uid), ignore_errors=True)
+    for sql in ("DELETE FROM person_samples WHERE person_id IN (SELECT id FROM people WHERE owner_id=?)", "DELETE FROM people WHERE owner_id=?",
+                "DELETE FROM sessions WHERE user_id=?", "DELETE FROM invites WHERE user_id=?", "DELETE FROM shares WHERE user_id=?",
+                "DELETE FROM user_sources WHERE user_id=?", "DELETE FROM users WHERE id=?"):
+        c.execute(sql, (uid,))
+    c.commit()
+    index.invalidate()
+    _count_cache.clear()
+    _stats_cache["t"] = 0
+
+
+@app.post("/api/me/delete")
+def me_delete():
+    u = me()
+    d = request.get_json(silent=True) or {}
+    row = db.conn().execute("SELECT pw_hash FROM users WHERE id=?", (u["id"],)).fetchone()
+    if not auth.verify_password(d.get("password", ""), row["pw_hash"] or ""):
+        return jsonify(error="That password isn't right."), 400
+    if u["role"] == "admin" and db.conn().execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0] <= 1:
+        return jsonify(error="You are the only admin. Make someone else an admin first."), 400
+    auth.audit("account_deleted", u["username"], u)
+    _purge_user(u["id"])
+    r = jsonify(ok=True)
+    r.delete_cookie(auth.COOKIE, path="/")
+    return r
 
 
 # ------------------------------------------------------------------ housekeeping
